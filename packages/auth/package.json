@@ -1,0 +1,24 @@
+{
+  "name": "@gemastik/auth",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "@gemastik/db": "workspace:*",
+    "@gemastik/env": "workspace:*",
+    "better-auth": "catalog:",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@gemastik/config": "workspace:*",
+    "typescript": "^5"
+  }
+}

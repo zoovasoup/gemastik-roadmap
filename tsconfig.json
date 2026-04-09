@@ -1,0 +1,3 @@
+{
+  "extends": "@gemastik/config/tsconfig.base.json"
+}
