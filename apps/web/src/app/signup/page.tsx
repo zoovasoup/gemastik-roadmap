@@ -1,9 +1,9 @@
-import { LoginForm } from '@/components/login-form'
+import { SignupForm } from '@/components/signup-form'
 import { auth } from '@gemastik/auth'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 
-export default async function LoginPage() {
+export default async function SignupPage() {
   const session = await auth.api.getSession({ headers: await headers() })
 
   if (session?.user) {
@@ -12,7 +12,7 @@ export default async function LoginPage() {
 
   return (
     <div className='mx-auto w-full max-w-md py-10'>
-      <LoginForm />
+      <SignupForm />
     </div>
   )
 }
