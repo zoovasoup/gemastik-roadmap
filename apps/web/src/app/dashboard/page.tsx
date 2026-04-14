@@ -8,54 +8,6 @@ import { SectionCards } from '@/components/section-cards'
 import { SiteHeader } from '@/components/site-header'
 import { SidebarInset, SidebarProvider } from '@gemastik/ui/components/sidebar'
 
-const dashboardData: z.infer<typeof schema>[] = [
-  {
-    id: 1,
-    header: 'Executive Summary',
-    type: 'Executive Summary',
-    status: 'Done',
-    target: '12',
-    limit: '20',
-    reviewer: 'Eddie Lake',
-  },
-  {
-    id: 2,
-    header: 'Technical Approach',
-    type: 'Technical Approach',
-    status: 'In Progress',
-    target: '18',
-    limit: '25',
-    reviewer: 'Assign reviewer',
-  },
-  {
-    id: 3,
-    header: 'Capabilities',
-    type: 'Capabilities',
-    status: 'Done',
-    target: '8',
-    limit: '14',
-    reviewer: 'Jamik Tashpulatov',
-  },
-  {
-    id: 4,
-    header: 'Past Performance',
-    type: 'Narrative',
-    status: 'In Progress',
-    target: '16',
-    limit: '24',
-    reviewer: 'Assign reviewer',
-  },
-  {
-    id: 5,
-    header: 'Cover Page',
-    type: 'Cover Page',
-    status: 'Done',
-    target: '4',
-    limit: '8',
-    reviewer: 'Emily Whalen',
-  },
-]
-
 export default async function DashboardPage() {
   const session = await auth.api.getSession({
     headers: await headers(),
