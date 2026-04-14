@@ -20,13 +20,14 @@ export const learningRoadmaps = pgTable(
 		goalDescription: text("goal_description").notNull(),
 		// Logic: Auto-Recalibration state tracking
 		currentStatus: text("current_status", {
-			enum: ["active", "recalibrating", "completed"],
-		})
-			.default("active")
-			.notNull(),
+			enum: ["active", "completed", "recalibrating", "needs_recalibration"],
+		}).default("active"),
+		// Buat metadata lebih fleksibel dengan Record atau interface yang lebih luas
 		metadata: jsonb("metadata").$type<{
-			originalPrompt: string;
-			aiContext: string;
+			originalPrompt?: string;
+			aiContext?: string;
+			reason?: string;
+			lastNode?: string;
 		}>(),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 		updatedAt: timestamp("updated_at")
@@ -52,6 +53,7 @@ export const roadmapNodes = pgTable(
 		contentType: text("content_type", {
 			enum: ["video", "text", "doc"],
 		}).notNull(),
+		successCriteria: text("success_criteria").notNull(),
 		difficultyLevel: text("difficulty_level").notNull(), // e.g., "Beginner", "Intermediate"
 		isCompleted: boolean("is_completed").default(false).notNull(),
 		createdAt: timestamp("created_at").defaultNow().notNull(),

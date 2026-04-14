@@ -1,4 +1,11 @@
-import { pgTable, text, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
+import {
+	pgTable,
+	text,
+	timestamp,
+	integer,
+	jsonb,
+	real,
+} from "drizzle-orm/pg-core";
 import { roadmapNodes } from "./learning";
 import { user } from "./auth";
 
@@ -14,7 +21,9 @@ export const socraticSessions = pgTable("socratic_sessions", {
 	chatHistory: jsonb("chat_history")
 		.$type<{ role: "user" | "assistant"; content: string }[]>()
 		.notNull(),
-	competencyScore: integer("competency_score").default(0),
+	competencyScore: integer("competency_score"),
+	stumbleCount: integer("stumble_count").default(0).notNull(),
+	sentimentScore: real("sentiment_score").default(0).notNull(),
 	aiFeedbackSummary: text("ai_feedback_summary"),
 	createdAt: timestamp("created_at").defaultNow().notNull(),
 });
