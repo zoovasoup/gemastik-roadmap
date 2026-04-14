@@ -40,6 +40,7 @@
   },
   "dependencies": {
     "@gemastik/env": "workspace:*",
+    "@google/generative-ai": "^0.24.1",
     "dotenv": "catalog:",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
