@@ -4,8 +4,6 @@ import { redirect } from 'next/navigation'
 import z from 'zod'
 
 import { AppSidebar } from '@/components/app-sidebar'
-import { ChartAreaInteractive } from '@/components/chart-area-interactive'
-import { DataTable, schema } from '@/components/data-table'
 import { SectionCards } from '@/components/section-cards'
 import { SiteHeader } from '@/components/site-header'
 import { SidebarInset, SidebarProvider } from '@gemastik/ui/components/sidebar'
