@@ -94,7 +94,6 @@ export const validationRouter = createTRPCRouter({
 					await tx
 						.update(learningRoadmaps)
 						.set({
-							// Pastiin kolom-kolom ini udah ada di DB lo
 							currentStatus: "needs_recalibration",
 							metadata: {
 								reason: isStuck ? "cognitive_blockage" : "affective_burnout",

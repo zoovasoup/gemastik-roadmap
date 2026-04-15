@@ -51,7 +51,7 @@ export const roadmapNodes = pgTable(
 		title: text("title").notNull(),
 		orderIndex: integer("order_index").notNull(),
 		contentType: text("content_type", {
-			enum: ["video", "text", "doc"],
+			enum: ["video", "text", "doc", "socratic", "hands_on"],
 		}).notNull(),
 		successCriteria: text("success_criteria").notNull(),
 		difficultyLevel: text("difficulty_level").notNull(), // e.g., "Beginner", "Intermediate"
