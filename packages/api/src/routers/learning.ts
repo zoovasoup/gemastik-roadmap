@@ -129,4 +129,30 @@ export const learningRouter = createTRPCRouter({
 				return { success: true };
 			});
 		}),
+
+	getDashboard: protectedProcedure.query(async ({ ctx }) => {
+		return await ctx.db.query.learningRoadmaps.findMany({
+			where: eq(learningRoadmaps.userId, ctx.user.id),
+			orderBy: (roadmap, { desc }) => [desc(roadmap.createdAt)],
+		});
+	}),
+
+	getById: protectedProcedure
+		.input(z.object({ id: z.string() }))
+		.query(async ({ ctx, input }) => {
+			const data = await ctx.db.query.learningRoadmaps.findFirst({
+				where: and(
+					eq(learningRoadmaps.id, input.id),
+					eq(learningRoadmaps.userId, ctx.user.id),
+				),
+				with: {
+					nodes: {
+						orderBy: (node, { asc }) => [asc(node.orderIndex)],
+					},
+				},
+			});
+
+			if (!data) throw new Error("Roadmap tidak ditemukan.");
+			return data;
+		}),
 });
