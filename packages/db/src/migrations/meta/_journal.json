@@ -8,6 +8,13 @@
       "when": 1775920328982,
       "tag": "0000_confused_proteus",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776263293954,
+      "tag": "0001_pink_crusher_hogan",
+      "breakpoints": true
     }
   ]
 }

@@ -15,10 +15,9 @@
       "react": "^19.2.3",
       "react-dom": "^19.2.3",
       "sonner": "^2.0.5",
-      "@orpc/server": "^1.12.2",
-      "@orpc/client": "^1.12.2",
-      "@orpc/openapi": "^1.12.2",
-      "@orpc/zod": "^1.12.2",
+      "@trpc/server": "^11.16.0",
+      "@trpc/client": "^11.16.0",
+      "@trpc/tanstack-react-query": "^11.16.0",
       "better-auth": "1.5.5",
       "@types/react": "^19.2.10",
       "@types/react-dom": "^19.2.3",
@@ -41,9 +40,12 @@
   "dependencies": {
     "@gemastik/env": "workspace:*",
     "@google/generative-ai": "^0.24.1",
+    "@trpc/client": "^11.16.0",
+    "@trpc/server": "^11.16.0",
     "dotenv": "catalog:",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
+    "nanoid": "^5.1.7",
     "zod": "catalog:"
   },
   "devDependencies": {

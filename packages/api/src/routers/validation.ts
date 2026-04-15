@@ -37,7 +37,7 @@ export const validationRouter = createTRPCRouter({
 
 			const systemInstruction = `
         You are the Socratic Validator for Gradio. Evaluate understanding of "${node.title}".
-        Success Criteria: ${node.successCriteria}. 
+			Success Criteria: ${node.successCriteria.join("; ")}. 
         Output ONLY raw JSON: { "ai_response": string, "competency_score": number, "stumble_count": 0|1, "sentiment_score": number }
       `;
 

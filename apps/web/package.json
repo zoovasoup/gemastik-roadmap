@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "check-types": "tsc --noEmit",
     "dev": "next dev --port 3001",
     "build": "next build",
     "start": "next start"
@@ -19,11 +20,8 @@
     "@gemastik/auth": "workspace:*",
     "@gemastik/env": "workspace:*",
     "@gemastik/ui": "workspace:*",
-    "@orpc/client": "catalog:",
-    "@orpc/openapi": "catalog:",
-    "@orpc/server": "catalog:",
-    "@orpc/tanstack-query": "^1.13.6",
-    "@orpc/zod": "catalog:",
+    "@trpc/client": "catalog:",
+    "@trpc/tanstack-react-query": "catalog:",
     "@tanstack/react-form": "^1.28.0",
     "@tanstack/react-query": "^5.90.12",
     "@tanstack/react-table": "^8.21.3",

@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 
+import { useTRPC } from '@/utils/trpc'
 import { Button } from '@gemastik/ui/components/button'
 import {
   Drawer,
@@ -14,6 +15,7 @@ import {
   DrawerTrigger,
 } from '@gemastik/ui/components/drawer'
 import { Input } from '@gemastik/ui/components/input'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { toast } from 'sonner'
 
@@ -80,14 +82,36 @@ const initialAnswers: Answers = {
 }
 
 export function CreateCourseDialog({ children }: { children: React.ReactNode }) {
+  const trpc = useTRPC()
+  const queryClient = useQueryClient()
   const isMobile = useIsMobile()
   const [open, setOpen] = React.useState(false)
   const [step, setStep] = React.useState(0)
   const [answers, setAnswers] = React.useState<Answers>(initialAnswers)
 
+  const createCourse = useMutation(
+    trpc.learning.create.mutationOptions({
+      onSuccess: async (result) => {
+        await queryClient.invalidateQueries({ queryKey: trpc.learning.list.queryKey() })
+
+        toast.success(result.generationStatus === 'generated' ? 'Course created' : 'Course saved as draft', {
+          description:
+            result.generationStatus === 'generated'
+              ? `Your roadmap is ready with ${result.nodeCount} suggested steps.`
+              : 'The course was saved, but roadmap generation needs another try.',
+        })
+
+        setOpen(false)
+      },
+      onError: (error) => {
+        toast.error(error.message)
+      },
+    }),
+  )
+
   const currentQuestion = questions[step]
   const currentAnswer = answers[currentQuestion.key]
-  const canContinue = currentAnswer.trim().length > 0
+  const canContinue = currentAnswer.trim().length > 0 && !createCourse.isPending
 
   const reset = React.useCallback(() => {
     setStep(0)
@@ -102,11 +126,7 @@ export function CreateCourseDialog({ children }: { children: React.ReactNode }) 
       return
     }
 
-    toast.success('Course onboarding completed', {
-      description: 'UI only for now. API integration comes next.',
-    })
-    setOpen(false)
-    reset()
+    createCourse.mutate(answers)
   }
 
   const handleBack = () => {
@@ -114,6 +134,10 @@ export function CreateCourseDialog({ children }: { children: React.ReactNode }) 
   }
 
   const handleOpenChange = (nextOpen: boolean) => {
+    if (createCourse.isPending) {
+      return
+    }
+
     setOpen(nextOpen)
     if (!nextOpen) {
       reset()
@@ -141,6 +165,7 @@ export function CreateCourseDialog({ children }: { children: React.ReactNode }) 
             <Input
               autoFocus
               placeholder={currentQuestion.placeholder}
+              disabled={createCourse.isPending}
               value={currentAnswer}
               onChange={(event) => {
                 const nextValue = event.target.value
@@ -157,6 +182,7 @@ export function CreateCourseDialog({ children }: { children: React.ReactNode }) 
                     type='button'
                     variant={isSelected ? 'default' : 'outline'}
                     className='justify-start'
+                    disabled={createCourse.isPending}
                     onClick={() => {
                       setAnswers((prev) => ({ ...prev, [currentQuestion.key]: option }))
                     }}
@@ -171,15 +197,15 @@ export function CreateCourseDialog({ children }: { children: React.ReactNode }) 
 
         <DrawerFooter className='pt-2'>
           <div className='flex items-center gap-2'>
-            <Button type='button' variant='outline' onClick={handleBack} disabled={step === 0}>
+            <Button type='button' variant='outline' onClick={handleBack} disabled={step === 0 || createCourse.isPending}>
               Back
             </Button>
             <Button type='button' className='flex-1' onClick={handleNext} disabled={!canContinue}>
-              {step === questions.length - 1 ? 'Finish' : 'Next'}
+              {createCourse.isPending ? 'Creating...' : step === questions.length - 1 ? 'Finish' : 'Next'}
             </Button>
           </div>
           <DrawerClose asChild>
-            <Button type='button' variant='ghost'>
+            <Button type='button' variant='ghost' disabled={createCourse.isPending}>
               Cancel
             </Button>
           </DrawerClose>
