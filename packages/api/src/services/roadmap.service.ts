@@ -1,5 +1,11 @@
 import { aiService } from "./ai.service";
 
+interface RecalibrateInput {
+	goal: string;
+	failedNodeTitle: string | undefined;
+	context: string;
+}
+
 export const roadmapService = {
 	async generateInitialRoadmap(goal: string) {
 		const systemInstruction = `
@@ -51,5 +57,32 @@ export const roadmapService = {
 			console.error("ROADMAP_GENERATION_FAILED:", error);
 			throw error;
 		}
+	},
+
+	async recalibrateRoadmap({
+		goal,
+		failedNodeTitle,
+		context,
+	}: RecalibrateInput) {
+		const systemInstruction = `
+    You are the Gradio Adaptive Engine. A student is STUCK on their goal: "${goal}".
+    Failed Node: "${failedNodeTitle}".
+    Failure History: ${context}.
+
+    Your Task:
+    1. Analyze why they failed based on the chat history.
+    2. Generate a REPLACEMENT path (3-5 nodes) that is more accessible.
+    3. If they lacked prerequisites, insert a bridging concept node.
+    4. Output ONLY raw JSON: { "nodes": [...] }
+
+    Strict Enum for content_type: ["video", "text", "doc"].
+    Nodes must follow the standard structure: title, difficulty_level, estimated_time, content_type, success_criteria.
+  `;
+
+		// Asumsi lo udah punya method generateStructuredOutput yang manggil Gemini
+		return await aiService.generateStructuredOutput(
+			"Generate adapted nodes to bypass the current learning roadblock.",
+			systemInstruction,
+		);
 	},
 };
