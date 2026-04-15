@@ -1,13 +1,35 @@
 'use client'
 
+import type { UseQueryResult } from '@tanstack/react-query'
+
 import { CourseCard } from '@/components/course-card'
 import { useTRPC } from '@/utils/trpc'
 import { Card, CardContent, CardHeader, CardTitle } from '@gemastik/ui/components/card'
 import { useQuery } from '@tanstack/react-query'
 
+type RoadmapCardData = {
+  id: string
+  goalDescription: string
+  currentStatus: string | null
+  createdAt: string | Date
+  metadata: {
+    onboarding?: {
+      topic: string
+      level: string
+      weeklyHours: string
+      learningStyle: string
+    }
+    generationStatus?: 'generated' | 'draft'
+  } | null
+  nodes: {
+    id: string
+    isCompleted: boolean
+  }[]
+}
+
 export function SectionCards() {
   const trpc = useTRPC()
-  const roadmapQuery = useQuery(trpc.learning.list.queryOptions(undefined))
+  const roadmapQuery = useQuery(trpc.learning.list.queryOptions(undefined)) as UseQueryResult<RoadmapCardData[], Error>
 
   if (roadmapQuery.isPending) {
     return (
@@ -63,6 +85,7 @@ export function SectionCards() {
         return (
           <CourseCard
             key={roadmap.id}
+            href={`/dashboard/courses/${roadmap.id}`}
             title={onboarding?.topic ?? roadmap.goalDescription}
             description={roadmap.goalDescription}
             level={onboarding?.level ?? 'Custom'}

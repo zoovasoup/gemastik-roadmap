@@ -5,6 +5,7 @@ import { learningRoadmaps, roadmapNodes } from "@gemastik/db/schema/learning";
 import { socraticSessions } from "@gemastik/db/schema/validation";
 import { nanoid } from "nanoid";
 
+import { aiService } from "../services/ai.service";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { roadmapService } from "../services/roadmap.service";
 
@@ -24,6 +25,11 @@ const generatedNodeSchema = z.object({
   estimated_time: z.coerce.number().int().positive(),
   content_type: z.enum(["video", "reading", "hands-on", "socratic", "text", "doc", "hands_on"]),
   success_criteria: z.array(z.string().trim().min(1)).min(1),
+});
+
+const tutorMessageSchema = z.object({
+	role: z.enum(["user", "assistant"]),
+	content: z.string().trim().min(1).max(3000),
 });
 
 type OnboardingAnswers = z.infer<typeof onboardingAnswersSchema>;
@@ -64,6 +70,31 @@ function formatNodesForInsert(nodes: GeneratedNode[], userId: string, roadmapId:
     successCriteria: node.success_criteria,
     orderIndex: startIndex + index,
   }));
+}
+
+function buildTutorInstruction({
+	goalDescription,
+	node,
+}: {
+	goalDescription: string;
+	node: {
+		title: string;
+		contentType: string;
+		difficultyLevel: number;
+		estimatedTime: number;
+		successCriteria: string[];
+	};
+}) {
+	return [
+		"You are a patient learning tutor inside a personalized roadmap app.",
+		"The overall learning goal is: " + goalDescription,
+		"The active roadmap node is: " + node.title,
+		"Node type: " + node.contentType + ". Difficulty: " + node.difficultyLevel + "/10. Estimated time: " + node.estimatedTime + " minutes.",
+		"Success criteria: " + node.successCriteria.join("; ") + ".",
+		"Help the learner understand the topic, unblock confusion, and propose next steps.",
+		"Do not grade them, do not mention competency scores, and do not imply progress was automatically updated.",
+		"Keep responses practical, conversational, and grounded in the node context.",
+	].join(" ");
 }
 
 async function generateNodes(goalDescription: string) {
@@ -235,6 +266,53 @@ export const learningRouter = createTRPCRouter({
 			},
 		});
 	}),
+
+	askTutor: protectedProcedure
+		.input(
+			z.object({
+				roadmapId: z.string().min(1),
+				nodeId: z.string().min(1),
+				messages: z.array(tutorMessageSchema).min(1).max(20),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			const roadmap = await ctx.db.query.learningRoadmaps.findFirst({
+				where: and(
+					eq(learningRoadmaps.id, input.roadmapId),
+					eq(learningRoadmaps.userId, ctx.user.id),
+				),
+			});
+
+			if (!roadmap) {
+				throw new Error("Roadmap tidak ditemukan.");
+			}
+
+			const node = await ctx.db.query.roadmapNodes.findFirst({
+				where: and(
+					eq(roadmapNodes.id, input.nodeId),
+					eq(roadmapNodes.roadmapId, input.roadmapId),
+					eq(roadmapNodes.userId, ctx.user.id),
+				),
+			});
+
+			if (!node) {
+				throw new Error("Node tidak ditemukan.");
+			}
+
+			const prompt = input.messages
+				.map((message) => `${message.role === "user" ? "Learner" : "Tutor"}: ` + message.content)
+				.join("\n");
+
+			const answer = await aiService.generateText(
+				prompt,
+				buildTutorInstruction({
+					goalDescription: roadmap.goalDescription,
+					node,
+				}),
+			);
+
+			return { answer };
+		}),
 
 	getDashboard: protectedProcedure.query(async ({ ctx }) => {
 		return await ctx.db.query.learningRoadmaps.findMany({
