@@ -9,16 +9,14 @@
 			"default": "./src/*.ts"
 		}
 	},
-	"scripts": {},
+	"scripts": {
+		"check-types": "tsc --noEmit"
+	},
 	"dependencies": {
 		"@gemastik/auth": "workspace:*",
 		"@gemastik/db": "workspace:*",
 		"@gemastik/env": "workspace:*",
-		"@orpc/client": "catalog:",
-		"@orpc/openapi": "catalog:",
-		"@orpc/server": "catalog:",
-		"@orpc/zod": "catalog:",
-		"@trpc/server": "^11.16.0",
+		"@trpc/server": "catalog:",
 		"@types/pg": "catalog:",
 		"dotenv": "catalog:",
 		"drizzle-orm": "catalog:",

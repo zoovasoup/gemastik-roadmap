@@ -75,7 +75,7 @@ export const roadmapService = {
     3. If they lacked prerequisites, insert a bridging concept node.
     4. Output ONLY raw JSON: { "nodes": [...] }
 
-    Strict Enum for content_type: ["video", "text", "doc"].
+    Strict Enum for content_type: ["video", "reading", "hands-on", "socratic"].
     Nodes must follow the standard structure: title, difficulty_level, estimated_time, content_type, success_criteria.
   `;
 

@@ -1,20 +1,21 @@
 "use client";
 
 import { Toaster } from "@gemastik/ui/components/sonner";
-import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
-import { queryClient } from "@/utils/orpc";
+import { TRPCReactProvider, getQueryClient } from "@/utils/trpc";
 
 import { ThemeProvider } from "./theme-provider";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
+  const queryClient = getQueryClient();
+
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-      <QueryClientProvider client={queryClient}>
+      <TRPCReactProvider>
         {children}
-        <ReactQueryDevtools />
-      </QueryClientProvider>
+        <ReactQueryDevtools client={queryClient} />
+      </TRPCReactProvider>
       <Toaster richColors />
     </ThemeProvider>
   );
