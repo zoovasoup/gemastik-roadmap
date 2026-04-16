@@ -5,6 +5,22 @@ import { env } from "@gemastik/env/server";
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
 
 export const aiService = {
+	async generateText(prompt: string, systemInstruction?: string) {
+		try {
+			const model = genAI.getGenerativeModel({
+				model: "gemini-2.5-flash",
+				systemInstruction,
+			});
+
+			const result = await model.generateContent(prompt);
+			const response = await result.response;
+			return response.text().trim();
+		} catch (error) {
+			console.error("AI_SERVICE_TEXT_ERROR:", error);
+			throw new Error("Gagal mendapatkan respon tutor dari Gemini");
+		}
+	},
+
 	/**
 	 * Function inti buat komunikasi sama Gemini.
 	 * Pakai model gemini-2.5-flash buat latency yang lebih rendah di Free Tier.

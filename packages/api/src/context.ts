@@ -1,12 +1,11 @@
 import { auth } from "@gemastik/auth";
-import type { NextRequest } from "next/server";
+import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
 
-export async function createContext(req: NextRequest) {
+export async function createContext({ req }: FetchCreateContextFnOptions) {
   const session = await auth.api.getSession({
     headers: req.headers,
   });
   return {
-    auth: null,
     session,
   };
 }

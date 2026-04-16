@@ -1,5 +1,9 @@
-import type { RouterClient } from "@orpc/server";
+import { createTRPCRouter } from "../trpc";
+import { learningRouter } from "./learning";
+import { validationRouter } from "./validation";
 
-export const appRouter = {};
+export const appRouter = createTRPCRouter({
+  learning: learningRouter,
+  validation: validationRouter,
+});
 export type AppRouter = typeof appRouter;
-export type AppRouterClient = RouterClient<typeof appRouter>;
