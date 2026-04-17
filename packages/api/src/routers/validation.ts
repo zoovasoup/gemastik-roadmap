@@ -36,10 +36,24 @@ export const validationRouter = createTRPCRouter({
 				: [{ role: "user", content: input.message }];
 
 			const systemInstruction = `
-        You are the Socratic Validator for Gradio. Evaluate understanding of "${node.title}".
-			Success Criteria: ${node.successCriteria.join("; ")}. 
-        Output ONLY raw JSON: { "ai_response": string, "competency_score": number, "stumble_count": 0|1, "sentiment_score": number }
-      `;
+				You are the Socratic Validator for Gradia. Evaluate understanding of "${node.title}".
+				Success Criteria: ${node.successCriteria.join("; ")}. 
+
+				Output ONLY raw JSON with this exact schema:
+				{
+					"ai_response": "string (your socratic response)",
+					"competency_score": number (0-100 based on success criteria met),
+					"stumble_count": 0 or 1 (1 if user is repeating mistakes or clearly stuck),
+					"sentiment_score": number (0.0 to 1.0)
+				}
+
+				SCORING RULES for sentiment_score:
+				- 0.0: Frustrated, angry, or "I give up" attitude.
+				- 0.5: Neutral, factual, or simple answers (Default).
+				- 1.0: Excited, motivated, or deep engagement.
+
+				Current user sentiment is crucial. If they are neutral, give 0.5.
+			`;
 
 			const aiResult = await aiService.generateStructuredOutput(
 				JSON.stringify(updatedHistory),

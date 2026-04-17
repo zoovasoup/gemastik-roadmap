@@ -21,7 +21,7 @@ export const socraticSessions = pgTable("socratic_sessions", {
 	chatHistory: jsonb("chat_history")
 		.$type<{ role: "user" | "assistant"; content: string }[]>()
 		.notNull(),
-	competencyScore: integer("competency_score"),
+	competencyScore: real("competency_score"),
 	stumbleCount: integer("stumble_count").default(0).notNull(),
 	sentimentScore: real("sentiment_score").default(0).notNull(),
 	aiFeedbackSummary: text("ai_feedback_summary"),
