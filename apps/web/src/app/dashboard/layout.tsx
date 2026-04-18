@@ -4,6 +4,7 @@ import { userSidebarPreferences } from '@gemastik/db/schema/sidebar'
 import { eq } from 'drizzle-orm'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
+import type { CSSProperties } from 'react'
 
 import { AppSidebar } from '@/components/app-sidebar'
 import { SiteHeader } from '@/components/site-header'
@@ -26,8 +27,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const sidebar = resolveLearnerSidebar(sidebarPreferences)
 
   return (
-    <SidebarProvider>
+    <SidebarProvider
+      style={{
+        '--sidebar-width': 'calc(var(--spacing) * 72)',
+        '--header-height': 'calc(var(--spacing) * 12)',
+      } as CSSProperties}
+    >
       <AppSidebar
+        variant='inset'
         sidebar={sidebar}
         user={{
           name: session.user.name,
@@ -35,7 +42,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           avatar: session.user.image,
         }}
       />
-      <SidebarInset className='min-h-svh overflow-hidden'>
+      <SidebarInset className='overflow-hidden'>
         <SiteHeader />
         <div className='flex min-h-0 flex-1 overflow-hidden'>
           {children}

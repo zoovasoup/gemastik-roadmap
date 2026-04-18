@@ -41,19 +41,19 @@ export function CourseCard({
   return (
     <Link href={href as Route} className='block h-full'>
       <Card className='h-full transition-colors hover:bg-accent/30'>
-        <CardHeader className='space-y-4'>
+        <CardHeader className='space-y-5'>
           <div className='flex items-start justify-between gap-3'>
             <Badge variant='secondary' className='px-3 py-1 text-xs font-medium'>
               {level}
             </Badge>
             <span className='text-sm font-medium text-muted-foreground'>{progressLabel}</span>
           </div>
-          <div className='space-y-2'>
-            <CardTitle className='text-base leading-tight'>{title}</CardTitle>
+          <div className='space-y-3'>
+            <CardTitle className='text-lg leading-tight'>{title}</CardTitle>
             <p className='line-clamp-4 text-sm leading-6 text-muted-foreground'>{description}</p>
           </div>
         </CardHeader>
-        <CardContent className='space-y-4'>
+        <CardContent className='space-y-5'>
           <div className='h-2 overflow-hidden bg-muted'>
             <div className='h-full bg-primary transition-[width]' style={{ width: `${progress ?? 12}%` }} />
           </div>
@@ -72,7 +72,7 @@ export function CourseCard({
             </div>
           </div>
         </CardContent>
-        <CardFooter className='flex items-center justify-between gap-3 text-sm text-muted-foreground'>
+        <CardFooter className='flex items-center justify-between gap-4 pt-1 text-sm text-muted-foreground'>
           <div className='flex items-center gap-2'>
             <CircleDashedIcon className='size-4' />
             <span>{status}</span>
