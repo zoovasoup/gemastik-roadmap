@@ -40,22 +40,22 @@ export function CourseCard({
 
   return (
     <Link href={href as Route} className='block h-full'>
-      <Card className='h-full rounded-2xl border-border/60 bg-card/90 shadow-sm transition-colors hover:border-primary/30'>
+      <Card className='h-full transition-colors hover:bg-accent/30'>
         <CardHeader className='space-y-4'>
           <div className='flex items-start justify-between gap-3'>
-            <Badge variant='secondary' className='rounded-full px-3 py-1 text-xs font-medium'>
+            <Badge variant='secondary' className='px-3 py-1 text-xs font-medium'>
               {level}
             </Badge>
             <span className='text-sm font-medium text-muted-foreground'>{progressLabel}</span>
           </div>
           <div className='space-y-2'>
-            <CardTitle className='text-xl leading-tight'>{title}</CardTitle>
+            <CardTitle className='text-base leading-tight'>{title}</CardTitle>
             <p className='line-clamp-4 text-sm leading-6 text-muted-foreground'>{description}</p>
           </div>
         </CardHeader>
         <CardContent className='space-y-4'>
-          <div className='h-2 overflow-hidden rounded-full bg-muted'>
-            <div className='h-full rounded-full bg-primary transition-[width]' style={{ width: `${progress ?? 12}%` }} />
+          <div className='h-2 overflow-hidden bg-muted'>
+            <div className='h-full bg-primary transition-[width]' style={{ width: `${progress ?? 12}%` }} />
           </div>
           <div className='flex flex-wrap gap-4 text-sm text-muted-foreground'>
             <div className='flex items-center gap-2'>

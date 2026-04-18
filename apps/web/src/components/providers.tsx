@@ -13,7 +13,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <TRPCReactProvider>
-        {children}
+        <div className="flex min-h-0 flex-1 flex-col">
+          {children}
+        </div>
         <ReactQueryDevtools client={queryClient} />
       </TRPCReactProvider>
       <Toaster richColors />

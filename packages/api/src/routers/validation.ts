@@ -1,12 +1,58 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { aiService } from "../services/ai.service";
-import { roadmapNodes, learningRoadmaps } from "@gemastik/db/schema/learning"; // Tambah learningRoadmaps
+import { roadmapNodes, learningRoadmaps } from "@gemastik/db/schema/learning";
 import { socraticSessions } from "@gemastik/db/schema/validation";
 import { eq as drizzleEq, and as drizzleAnd } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
+async function syncRoadmapCompletion({
+	ctx,
+	roadmapId,
+}: {
+	ctx: { db: typeof import("@gemastik/db").db; user: { id: string } };
+	roadmapId: string;
+}) {
+	const nodes = await ctx.db.query.roadmapNodes.findMany({
+		where: drizzleAnd(
+			drizzleEq(roadmapNodes.roadmapId, roadmapId),
+			drizzleEq(roadmapNodes.userId, ctx.user.id),
+		),
+	});
+
+	const isCompleted = nodes.length > 0 && nodes.every((node) => node.isCompleted);
+
+	await ctx.db
+		.update(learningRoadmaps)
+		.set({ currentStatus: isCompleted ? "completed" : "active" })
+		.where(
+			drizzleAnd(
+				drizzleEq(learningRoadmaps.id, roadmapId),
+				drizzleEq(learningRoadmaps.userId, ctx.user.id),
+			),
+		);
+
+	return isCompleted;
+}
+
 export const validationRouter = createTRPCRouter({
+	getSocraticSession: protectedProcedure
+		.input(
+			z.object({
+				nodeId: z.string().min(1),
+			}),
+		)
+		.query(async ({ ctx, input }) => {
+			const session = await ctx.db.query.socraticSessions.findFirst({
+				where: drizzleAnd(
+					drizzleEq(socraticSessions.nodeId, input.nodeId),
+					drizzleEq(socraticSessions.userId, ctx.user.id),
+				),
+			});
+
+			return session ?? null;
+		}),
+
 	submitSocratic: protectedProcedure
 		.input(
 			z.object({
@@ -63,6 +109,10 @@ export const validationRouter = createTRPCRouter({
 			return await ctx.db.transaction(async (tx) => {
 				const totalStumbles =
 					(session?.stumbleCount ?? 0) + (aiResult.stumble_count ?? 0);
+				const nextChatHistory = [
+					...updatedHistory,
+					{ role: "assistant" as const, content: aiResult.ai_response },
+				];
 
 				await tx
 					.insert(socraticSessions)
@@ -70,10 +120,7 @@ export const validationRouter = createTRPCRouter({
 						id: session?.id ?? nanoid(),
 						nodeId: node.id,
 						userId: ctx.user.id,
-						chatHistory: [
-							...updatedHistory,
-							{ role: "assistant", content: aiResult.ai_response },
-						],
+						chatHistory: nextChatHistory,
 						competencyScore: aiResult.competency_score,
 						stumbleCount: totalStumbles,
 						sentimentScore: aiResult.sentiment_score ?? 0,
@@ -82,10 +129,7 @@ export const validationRouter = createTRPCRouter({
 					.onConflictDoUpdate({
 						target: socraticSessions.id,
 						set: {
-							chatHistory: [
-								...updatedHistory,
-								{ role: "assistant", content: aiResult.ai_response },
-							],
+							chatHistory: nextChatHistory,
 							competencyScore: aiResult.competency_score,
 							stumbleCount: totalStumbles,
 							sentimentScore: aiResult.sentiment_score ?? 0,
@@ -96,8 +140,10 @@ export const validationRouter = createTRPCRouter({
 				if (aiResult.competency_score >= 80) {
 					await tx
 						.update(roadmapNodes)
-						.set({ isCompleted: true })
+						.set({ isCompleted: true, completedAt: new Date() })
 						.where(drizzleEq(roadmapNodes.id, node.id));
+
+					await syncRoadmapCompletion({ ctx, roadmapId: node.roadmapId });
 				}
 
 				// --- Logic Rekalsibrasi (Threshold: Stumble > 3 atau Sentiment < 0.3) ---

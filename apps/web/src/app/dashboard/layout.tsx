@@ -18,9 +18,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className='min-h-svh overflow-hidden'>
         <SiteHeader />
-        {children}
+        <div className='flex min-h-0 flex-1 overflow-hidden'>
+          {children}
+        </div>
       </SidebarInset>
     </SidebarProvider>
   )
