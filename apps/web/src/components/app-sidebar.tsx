@@ -1,8 +1,6 @@
 'use client'
 
-import * as React from 'react'
-
-import { NavDocuments } from '@/components/nav-documents'
+import type { ResolvedSidebarData, ResolvedSidebarItem } from '@/lib/sidebar-config'
 import { NavMain } from '@/components/nav-main'
 import { NavSecondary } from '@/components/nav-secondary'
 import { NavUser } from '@/components/nav-user'
@@ -17,48 +15,34 @@ import {
 } from '@gemastik/ui/components/sidebar'
 import {
   LayoutDashboardIcon,
-  ListIcon,
-  ChartBarIcon,
-  FolderIcon,
-  UsersIcon,
-  CameraIcon,
-  FileTextIcon,
   Settings2Icon,
-  CircleHelpIcon,
-  SearchIcon,
-  DatabaseIcon,
-  FileChartColumnIcon,
-  FileIcon,
   CommandIcon,
 } from 'lucide-react'
 
-const data = {
-  user: {
-    name: 'shadcn',
-    email: 'm@example.com',
-    avatar: '/avatars/shadcn.jpg',
-  },
-  navMain: [
-    {
-      title: 'Dashboard',
-      url: '#',
-      icon: <LayoutDashboardIcon />,
-    },
-    {
-      title: 'All Course',
-      url: '#',
-      icon: <ListIcon />,
-    },
-  ],
-  navSecondary: [
-    {
-      title: 'Settings',
-      url: '#',
-      icon: <Settings2Icon />,
-    },
-  ],
+const iconMap = {
+  'layout-dashboard': <LayoutDashboardIcon />,
+  'settings-2': <Settings2Icon />,
 }
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+
+function withIcons(items: ResolvedSidebarItem[]) {
+  return items.map((item) => ({
+    ...item,
+    iconNode: iconMap[item.icon],
+  }))
+}
+
+export function AppSidebar({
+  sidebar,
+  user,
+  ...props
+}: React.ComponentProps<typeof Sidebar> & {
+  sidebar: ResolvedSidebarData
+  user: {
+    name: string
+    email: string
+    avatar?: string | null
+  }
+}) {
   return (
     <Sidebar collapsible='offcanvas' {...props}>
       <SidebarHeader>
@@ -72,11 +56,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={data.navMain} />
-        <NavSecondary items={data.navSecondary} className='mt-auto' />
+        <NavMain items={withIcons(sidebar.main)} />
+        <NavSecondary items={withIcons(sidebar.secondary)} className='mt-auto' />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={user} />
       </SidebarFooter>
     </Sidebar>
   )

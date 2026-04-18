@@ -18,6 +18,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@gemastik/api": "workspace:*",
     "@gemastik/auth": "workspace:*",
+    "@gemastik/db": "workspace:*",
     "@gemastik/env": "workspace:*",
     "@gemastik/ui": "workspace:*",
     "@trpc/client": "catalog:",

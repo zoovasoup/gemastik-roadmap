@@ -1,6 +1,9 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
+import type { Route } from "next"
+import { usePathname } from "next/navigation"
 
 import {
   SidebarGroup,
@@ -10,24 +13,27 @@ import {
   SidebarMenuItem,
 } from "@gemastik/ui/components/sidebar"
 
+import type { ResolvedSidebarItem } from "@/lib/sidebar-config"
+
 export function NavSecondary({
   items,
   ...props
 }: {
-  items: {
-    title: string
-    url: string
-    icon: React.ReactNode
-  }[]
+  items: (ResolvedSidebarItem & { iconNode?: React.ReactNode })[]
 } & React.ComponentPropsWithoutRef<typeof SidebarGroup>) {
+  const pathname = usePathname()
+
   return (
     <SidebarGroup {...props}>
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton render={<a href={item.url} />}>
-                {item.icon}
+              <SidebarMenuButton
+                render={<Link href={item.href as Route} />}
+                isActive={pathname === item.href || pathname.startsWith(`${item.href}/`)}
+              >
+                {item.iconNode}
                 <span>{item.title}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
