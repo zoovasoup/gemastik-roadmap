@@ -9,14 +9,17 @@ import { useTRPC } from '@/utils/trpc'
 import { Badge } from '@gemastik/ui/components/badge'
 import { Button } from '@gemastik/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@gemastik/ui/components/card'
+import { ScrollArea } from '@gemastik/ui/components/scroll-area'
 import { Skeleton } from '@gemastik/ui/components/skeleton'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@gemastik/ui/components/tabs'
+import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeftIcon,
   BookOpenIcon,
   CircleCheckBigIcon,
   CircleDashedIcon,
   Clock3Icon,
+  RotateCcwIcon,
   SendIcon,
   SparklesIcon,
 } from 'lucide-react'
@@ -27,6 +30,18 @@ type ChatMessage = {
   content: string
 }
 
+type LessonContent = {
+  summary: string
+  concepts: string[]
+  steps: string[]
+  exercises: string[]
+  resources: {
+    title: string
+    description: string
+    type: 'reading' | 'video' | 'hands-on' | 'socratic'
+  }[]
+}
+
 type CourseNode = {
   id: string
   title: string
@@ -35,11 +50,13 @@ type CourseNode = {
   successCriteria: string[]
   difficultyLevel: number
   isCompleted: boolean
+  completedAt: string | Date | null
 }
 
 type CourseDetail = {
   id: string
   goalDescription: string
+  currentStatus: string | null
   metadata: {
     onboarding?: {
       topic: string
@@ -52,10 +69,12 @@ type CourseDetail = {
   nodes: CourseNode[]
 }
 
-type TutorInput = {
-  roadmapId: string
-  nodeId: string
-  messages: ChatMessage[]
+type SocraticSession = {
+  id: string
+  chatHistory: ChatMessage[]
+  competencyScore: number | null
+  stumbleCount: number
+  sentimentScore: number
 }
 
 function getDifficultyLabel(level: number) {
@@ -64,32 +83,24 @@ function getDifficultyLabel(level: number) {
   return 'Advanced'
 }
 
-function getNodeOverview(node: {
-  title: string
-  contentType: string
-  difficultyLevel: number
-  estimatedTime: number
-  successCriteria: string[]
-}) {
-  return {
-    whyItMatters: `This step focuses on ${node.title.toLowerCase()} so you can move your roadmap forward with a concrete ${node.contentType} activity instead of staying at the planning stage.`,
-    studyApproach: `Set aside about ${node.estimatedTime} minutes, keep the scope narrow, and aim to finish one clear outcome before jumping to the next roadmap node.`,
-    coachingPrompt: `If you get stuck, ask the tutor to explain ${node.title.toLowerCase()} in simpler terms, give an example, or suggest a smaller first step.`,
-  }
+function getResourceLabel(type: LessonContent['resources'][number]['type']) {
+  if (type === 'hands-on') return 'Hands-on'
+  return type.charAt(0).toUpperCase() + type.slice(1)
 }
 
-function getTutorIntro(nodeTitle: string) {
-  return `Ask me anything about ${nodeTitle}. I can explain the concept, suggest a study path, or help you break the work into smaller steps.`
+function getValidationPrompt(nodeTitle: string) {
+  return `Explain ${nodeTitle} in your own words, describe how you would apply it, or answer the AI's follow-up questions.`
 }
 
 export function CourseWorkspace({ courseId }: { courseId: string }) {
   const trpc = useTRPC()
-  const courseQuery = useQuery(trpc.learning.getById.queryOptions({ id: courseId })) as UseQueryResult<CourseDetail, Error>
+  const queryClient = useQueryClient()
   const [selectedNodeId, setSelectedNodeId] = React.useState<string | null>(null)
-  const [draftMessage, setDraftMessage] = React.useState('')
-  const [threads, setThreads] = React.useState<Record<string, ChatMessage[]>>({})
+  const [draftTutorMessage, setDraftTutorMessage] = React.useState('')
+  const [draftValidationMessage, setDraftValidationMessage] = React.useState('')
+  const [activeTab, setActiveTab] = React.useState<'tutor' | 'validation'>('tutor')
 
-  const tutorChat = useMutation(trpc.learning.askTutor.mutationOptions())
+  const courseQuery = useQuery(trpc.learning.getById.queryOptions({ id: courseId })) as UseQueryResult<CourseDetail, Error>
 
   React.useEffect(() => {
     if (!courseQuery.data || selectedNodeId) {
@@ -100,11 +111,33 @@ export function CourseWorkspace({ courseId }: { courseId: string }) {
     setSelectedNodeId(nextNode?.id ?? null)
   }, [courseQuery.data, selectedNodeId])
 
+  const selectedNode = courseQuery.data?.nodes.find((node) => node.id === selectedNodeId) ?? courseQuery.data?.nodes[0] ?? null
+
+  const lessonContentQuery = useQuery({
+    ...trpc.learning.getNodeContent.queryOptions(selectedNode ? { roadmapId: courseId, nodeId: selectedNode.id } : skipToken),
+    enabled: Boolean(selectedNode),
+  }) as UseQueryResult<{ nodeId: string; lessonContent: LessonContent }, Error>
+
+  const tutorSessionQuery = useQuery({
+    ...trpc.learning.getTutorSession.queryOptions(selectedNode ? { nodeId: selectedNode.id } : skipToken),
+    enabled: Boolean(selectedNode),
+  }) as UseQueryResult<ChatMessage[], Error>
+
+  const socraticSessionQuery = useQuery({
+    ...trpc.validation.getSocraticSession.queryOptions(selectedNode ? { nodeId: selectedNode.id } : skipToken),
+    enabled: Boolean(selectedNode),
+  }) as UseQueryResult<SocraticSession | null, Error>
+
+  const tutorChat = useMutation(trpc.learning.askTutor.mutationOptions())
+  const validationChat = useMutation(trpc.validation.submitSocratic.mutationOptions())
+  const finishNode = useMutation(trpc.learning.finishNode.mutationOptions())
+  const reopenNode = useMutation(trpc.learning.reopenNode.mutationOptions())
+
   if (courseQuery.isPending) {
     return (
-      <div className='flex flex-1 flex-col gap-4 px-4 py-4 lg:px-6 md:py-6'>
+      <div className='flex min-h-0 flex-1 flex-col gap-4 px-4 py-4 lg:px-6 md:py-6'>
         <Skeleton className='h-8 w-56' />
-        <div className='grid gap-4 xl:grid-cols-[18rem_minmax(0,1fr)_24rem]'>
+        <div className='grid min-h-0 flex-1 gap-4 xl:grid-cols-[18rem_minmax(0,1fr)_24rem]'>
           <Skeleton className='h-[28rem] w-full' />
           <Skeleton className='h-[28rem] w-full' />
           <Skeleton className='h-[28rem] w-full' />
@@ -115,7 +148,7 @@ export function CourseWorkspace({ courseId }: { courseId: string }) {
 
   if (courseQuery.isError) {
     return (
-      <div className='flex flex-1 flex-col gap-4 px-4 py-4 lg:px-6 md:py-6'>
+      <div className='flex min-h-0 flex-1 flex-col gap-4 px-4 py-4 lg:px-6 md:py-6'>
         <Link href='/dashboard' className='inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground'>
           <ArrowLeftIcon className='size-4' />
           Back to dashboard
@@ -132,62 +165,138 @@ export function CourseWorkspace({ courseId }: { courseId: string }) {
 
   const course = courseQuery.data
   const onboarding = course.metadata?.onboarding
-  const selectedNode = course.nodes.find((node) => node.id === selectedNodeId) ?? course.nodes[0] ?? null
   const completedCount = course.nodes.filter((node) => node.isCompleted).length
   const progress = course.nodes.length > 0 ? Math.round((completedCount / course.nodes.length) * 100) : 0
-  const nodeOverview = selectedNode ? getNodeOverview(selectedNode) : null
-  const visibleMessages = selectedNode
-    ? threads[selectedNode.id] ?? [{ role: 'assistant' as const, content: getTutorIntro(selectedNode.title) }]
-    : [{ role: 'assistant' as const, content: 'This course is still a draft. Once roadmap steps exist, the tutor can discuss a selected node.' }]
+  const tutorMessages = tutorSessionQuery.data ?? []
+  const validationMessages = socraticSessionQuery.data?.chatHistory ?? []
 
-  const handleSendMessage = (event: React.FormEvent<HTMLFormElement>) => {
+  const refreshCourseData = async () => {
+    await queryClient.invalidateQueries({ queryKey: trpc.learning.getById.queryKey({ id: courseId }) })
+    await queryClient.invalidateQueries({ queryKey: trpc.learning.list.queryKey() })
+  }
+
+  const handleSendTutorMessage = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
     if (!selectedNode || tutorChat.isPending) {
       return
     }
 
-    const message = draftMessage.trim()
+    const message = draftTutorMessage.trim()
     if (!message) {
       return
     }
 
-    const nextMessages = [...(threads[selectedNode.id] ?? []), { role: 'user' as const, content: message }]
-    setThreads((current) => ({
-      ...current,
-      [selectedNode.id]: nextMessages,
-    }))
-    setDraftMessage('')
+    setDraftTutorMessage('')
 
-    void tutorChat
-      .mutateAsync({
+    try {
+      const result = await tutorChat.mutateAsync({
         roadmapId: course.id,
         nodeId: selectedNode.id,
-        messages: nextMessages,
+        message,
       })
-      .then((result) => {
-        setThreads((current) => ({
-          ...current,
-          [selectedNode.id]: [...(current[selectedNode.id] ?? []), { role: 'assistant', content: result.answer }],
-        }))
+
+      queryClient.setQueryData(trpc.learning.getTutorSession.queryKey({ nodeId: selectedNode.id }), result.chatHistory)
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : 'Unable to get a tutor response.'
+      toast.error(messageText)
+      setDraftTutorMessage(message)
+    }
+  }
+
+  const handleSendValidationMessage = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!selectedNode || validationChat.isPending) {
+      return
+    }
+
+    const message = draftValidationMessage.trim()
+    if (!message) {
+      return
+    }
+
+    setDraftValidationMessage('')
+
+    try {
+      const result = await validationChat.mutateAsync({
+        nodeId: selectedNode.id,
+        message,
       })
-      .catch((error: Error) => {
-        toast.error(error.message)
-        setThreads((current) => ({
-          ...current,
-          [selectedNode.id]: [
-            ...(current[selectedNode.id] ?? []),
-            {
-              role: 'assistant',
-              content: 'I hit an error while generating a tutor response. Please try again.',
-            },
-          ],
-        }))
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: trpc.validation.getSocraticSession.queryKey({ nodeId: selectedNode.id }) }),
+        refreshCourseData(),
+      ])
+
+      if (result.competency_score >= 80) {
+        toast.success('Step completed through validation', {
+          description: 'The node now counts toward roadmap progress.',
+        })
+      } else {
+        toast.message('Validation submitted', {
+          description: 'Keep going until your Socratic score reaches the passing threshold.',
+        })
+      }
+
+      if (result.recalibrationRequired) {
+        toast.warning('Roadmap recalibration required', {
+          description: 'Your learning path needs adjustment based on this validation session.',
+        })
+      }
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : 'Unable to validate this node.'
+      toast.error(messageText)
+      setDraftValidationMessage(message)
+    }
+  }
+
+  const handleReopenNode = async () => {
+    if (!selectedNode || reopenNode.isPending) {
+      return
+    }
+
+    try {
+      await reopenNode.mutateAsync({
+        roadmapId: course.id,
+        nodeId: selectedNode.id,
       })
+
+      await refreshCourseData()
+      toast.success('Step reopened', {
+        description: 'You can validate this node again when you are ready.',
+      })
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : 'Unable to reopen this node.'
+      toast.error(messageText)
+    }
+  }
+
+  const handleFinishNode = async () => {
+    if (!selectedNode || finishNode.isPending) {
+      return
+    }
+
+    try {
+      const result = await finishNode.mutateAsync({
+        roadmapId: course.id,
+        nodeId: selectedNode.id,
+      })
+
+      await refreshCourseData()
+      toast.success(result.roadmapCompleted ? 'Step finished and roadmap completed' : 'Step marked complete', {
+        description: result.roadmapCompleted
+          ? 'All roadmap steps are now complete.'
+          : 'You can still reopen this step later if needed.',
+      })
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : 'Unable to mark this node complete.'
+      toast.error(messageText)
+    }
   }
 
   return (
-    <div className='flex flex-1 flex-col gap-4 px-4 py-4 lg:px-6 md:py-6'>
+    <div className='flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden px-4 py-4 lg:px-6 md:py-6'>
       <div className='flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'>
         <div className='space-y-2'>
           <Link href='/dashboard' className='inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground'>
@@ -203,165 +312,342 @@ export function CourseWorkspace({ courseId }: { courseId: string }) {
           <Badge variant='secondary'>{onboarding?.level ?? 'Custom roadmap'}</Badge>
           <Badge variant='secondary'>{progress}% complete</Badge>
           <Badge variant='secondary'>{course.nodes.length} steps</Badge>
+          <Badge variant='secondary'>{course.currentStatus ?? 'active'}</Badge>
         </div>
       </div>
 
-      <div className='grid gap-4 xl:grid-cols-[18rem_minmax(0,1fr)_24rem]'>
-        <Card className='xl:max-h-[calc(100vh-11rem)] xl:overflow-y-auto'>
+      <div className='grid min-h-0 flex-1 gap-4 overflow-hidden xl:grid-cols-[18rem_minmax(0,1fr)_24rem]'>
+        <Card className='flex min-h-0 flex-col xl:h-full'>
           <CardHeader>
             <CardTitle>Full roadmap</CardTitle>
-            <CardDescription>Pick a step to inspect the lesson brief and ask the tutor focused questions.</CardDescription>
+            <CardDescription>Select a step to load its lesson, tutor thread, and validation history.</CardDescription>
           </CardHeader>
-          <CardContent className='space-y-2'>
-            {course.nodes.length === 0 ? (
-              <div className='rounded-none border border-dashed px-3 py-4 text-sm text-muted-foreground'>
-                This course is saved, but its roadmap is still in draft mode.
-              </div>
-            ) : (
-              course.nodes.map((node, index) => {
-                const isSelected = node.id === selectedNode?.id
+          <CardContent className='min-h-0 flex-1 p-0'>
+            <ScrollArea className='h-full w-full'>
+              <div className='space-y-2 p-6'>
+                {course.nodes.length === 0 ? (
+                  <div className='rounded-none border border-dashed px-3 py-4 text-sm text-muted-foreground'>
+                    This course is saved, but its roadmap is still in draft mode.
+                  </div>
+                ) : (
+                  course.nodes.map((node, index) => {
+                    const isSelected = node.id === selectedNode?.id
 
-                return (
-                  <button
-                    key={node.id}
-                    type='button'
-                    onClick={() => setSelectedNodeId(node.id)}
-                    className={`flex w-full flex-col gap-2 border px-3 py-3 text-left transition-colors ${isSelected ? 'border-primary bg-primary/5' : 'border-border/70 hover:border-primary/40 hover:bg-muted/40'}`}
-                  >
-                    <div className='flex items-start justify-between gap-3'>
-                      <div>
-                        <p className='text-[11px] uppercase tracking-[0.2em] text-muted-foreground'>Step {index + 1}</p>
-                        <p className='mt-1 text-sm font-medium text-foreground'>{node.title}</p>
-                      </div>
-                      {node.isCompleted ? <CircleCheckBigIcon className='mt-0.5 size-4 text-primary' /> : <CircleDashedIcon className='mt-0.5 size-4 text-muted-foreground' />}
-                    </div>
-                    <div className='flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground'>
-                      <span>{node.contentType}</span>
-                      <span>•</span>
-                      <span>{node.estimatedTime} min</span>
-                      <span>•</span>
-                      <span>{getDifficultyLabel(node.difficultyLevel)}</span>
-                    </div>
-                  </button>
-                )
-              })
-            )}
+                    return (
+                      <button
+                        key={node.id}
+                        type='button'
+                        onClick={() => setSelectedNodeId(node.id)}
+                        className={`flex w-full flex-col gap-2 border px-3 py-3 text-left transition-colors ${isSelected ? 'border-primary bg-primary/5' : 'border-border/70 hover:border-primary/40 hover:bg-muted/40'}`}
+                      >
+                        <div className='flex items-start justify-between gap-3'>
+                          <div>
+                            <p className='text-[11px] uppercase tracking-[0.2em] text-muted-foreground'>Step {index + 1}</p>
+                            <p className='mt-1 text-sm font-medium text-foreground'>{node.title}</p>
+                          </div>
+                          {node.isCompleted ? <CircleCheckBigIcon className='mt-0.5 size-4 text-primary' /> : <CircleDashedIcon className='mt-0.5 size-4 text-muted-foreground' />}
+                        </div>
+                        <div className='flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground'>
+                          <span>{node.contentType}</span>
+                          <span>•</span>
+                          <span>{node.estimatedTime} min</span>
+                          <span>•</span>
+                          <span>{getDifficultyLabel(node.difficultyLevel)}</span>
+                        </div>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            </ScrollArea>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className='flex min-h-0 flex-col xl:h-full'>
           <CardHeader>
             <CardTitle>Node content</CardTitle>
             <CardDescription>
-              {selectedNode ? 'A focused brief built from the saved roadmap node.' : 'Select a roadmap step to see its lesson brief.'}
+              {selectedNode ? 'Real lesson content generated and stored for the selected node.' : 'Select a roadmap step to load its lesson content.'}
             </CardDescription>
           </CardHeader>
-          <CardContent className='space-y-6'>
-            {selectedNode && nodeOverview ? (
-              <>
-                <div className='space-y-3 border-b pb-4'>
-                  <div className='flex flex-wrap items-center gap-2'>
-                    <Badge variant='secondary'>{selectedNode.contentType}</Badge>
-                    <Badge variant='secondary'>{selectedNode.estimatedTime} min</Badge>
-                    <Badge variant='secondary'>{getDifficultyLabel(selectedNode.difficultyLevel)}</Badge>
-                  </div>
-                  <div>
-                    <h2 className='text-lg font-semibold'>{selectedNode.title}</h2>
-                    <p className='mt-2 text-sm leading-6 text-muted-foreground'>{nodeOverview.whyItMatters}</p>
-                  </div>
-                </div>
-
-                <div className='grid gap-4 lg:grid-cols-2'>
-                  <div className='space-y-2 border p-4'>
-                    <div className='flex items-center gap-2 text-sm font-medium'>
-                      <BookOpenIcon className='size-4' />
-                      Study approach
+          <CardContent className='min-h-0 flex-1 p-0'>
+            <ScrollArea className='h-full w-full'>
+              <div className='space-y-6 p-6'>
+                {selectedNode ? (
+                  lessonContentQuery.isPending ? (
+                    <div className='space-y-4'>
+                      <Skeleton className='h-6 w-32' />
+                      <Skeleton className='h-20 w-full' />
+                      <Skeleton className='h-32 w-full' />
                     </div>
-                    <p className='text-sm leading-6 text-muted-foreground'>{nodeOverview.studyApproach}</p>
-                  </div>
-                  <div className='space-y-2 border p-4'>
-                    <div className='flex items-center gap-2 text-sm font-medium'>
-                      <SparklesIcon className='size-4' />
-                      Tutor prompt
+                  ) : lessonContentQuery.isError ? (
+                    <div className='rounded-none border border-destructive/40 px-4 py-4 text-sm text-muted-foreground'>
+                      {lessonContentQuery.error.message}
                     </div>
-                    <p className='text-sm leading-6 text-muted-foreground'>{nodeOverview.coachingPrompt}</p>
+                  ) : (
+                    <>
+                  <div className='space-y-3 border-b pb-4'>
+                    <div className='flex flex-wrap items-center gap-2'>
+                      <Badge variant='secondary'>{selectedNode.contentType}</Badge>
+                      <Badge variant='secondary'>{selectedNode.estimatedTime} min</Badge>
+                      <Badge variant='secondary'>{getDifficultyLabel(selectedNode.difficultyLevel)}</Badge>
+                      {selectedNode.isCompleted ? <Badge variant='secondary'>Completed</Badge> : null}
+                    </div>
+                    <div>
+                      <h2 className='text-lg font-semibold'>{selectedNode.title}</h2>
+                      <p className='mt-2 text-sm leading-6 text-muted-foreground'>{lessonContentQuery.data?.lessonContent.summary}</p>
+                    </div>
+                    <div className='flex flex-wrap gap-2'>
+                      {selectedNode.isCompleted ? (
+                        <Button type='button' variant='outline' onClick={handleReopenNode} disabled={reopenNode.isPending}>
+                          <RotateCcwIcon className='size-4' />
+                          {reopenNode.isPending ? 'Reopening...' : 'Reopen step'}
+                        </Button>
+                      ) : (
+                        <>
+                          <Button type='button' onClick={() => setActiveTab('validation')}>
+                            <CircleCheckBigIcon className='size-4' />
+                            Validate to finish step
+                          </Button>
+                          <Button type='button' variant='outline' onClick={handleFinishNode} disabled={finishNode.isPending}>
+                            <CircleCheckBigIcon className='size-4' />
+                            {finishNode.isPending ? 'Finishing...' : 'Finish manually'}
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                <div className='space-y-3'>
-                  <h3 className='text-sm font-medium'>Success criteria</h3>
-                  <div className='space-y-2'>
-                    {selectedNode.successCriteria.map((criterion) => (
-                      <div key={criterion} className='flex items-start gap-2 border px-3 py-3 text-sm text-muted-foreground'>
-                        <CircleCheckBigIcon className='mt-0.5 size-4 text-primary' />
-                        <span>{criterion}</span>
+                  <div className='space-y-3'>
+                    <h3 className='text-sm font-medium'>Core concepts</h3>
+                    <div className='space-y-2'>
+                      {lessonContentQuery.data?.lessonContent.concepts.map((concept) => (
+                        <div key={concept} className='border px-3 py-3 text-sm text-muted-foreground'>
+                          {concept}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className='space-y-3'>
+                    <h3 className='text-sm font-medium'>Suggested steps</h3>
+                    <div className='space-y-2'>
+                      {lessonContentQuery.data?.lessonContent.steps.map((step, index) => (
+                        <div key={`${step}-${index}`} className='flex items-start gap-3 border px-3 py-3 text-sm text-muted-foreground'>
+                          <span className='font-medium text-foreground'>{index + 1}.</span>
+                          <span>{step}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className='grid gap-4 lg:grid-cols-2'>
+                    <div className='space-y-3 border p-4'>
+                      <div className='flex items-center gap-2 text-sm font-medium'>
+                        <BookOpenIcon className='size-4' />
+                        Exercises
                       </div>
-                    ))}
+                      <div className='space-y-2'>
+                        {lessonContentQuery.data?.lessonContent.exercises.map((exercise) => (
+                          <p key={exercise} className='text-sm leading-6 text-muted-foreground'>
+                            {exercise}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                    <div className='space-y-3 border p-4'>
+                      <div className='flex items-center gap-2 text-sm font-medium'>
+                        <SparklesIcon className='size-4' />
+                        Success criteria
+                      </div>
+                      <div className='space-y-2'>
+                        {selectedNode.successCriteria.map((criterion) => (
+                          <p key={criterion} className='text-sm leading-6 text-muted-foreground'>
+                            {criterion}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </>
-            ) : (
-              <div className='rounded-none border border-dashed px-4 py-8 text-sm text-muted-foreground'>
-                This course does not have roadmap nodes yet. Open the dashboard later after the roadmap is generated.
+
+                  <div className='space-y-3'>
+                    <h3 className='text-sm font-medium'>Resources</h3>
+                    <div className='space-y-2'>
+                      {lessonContentQuery.data?.lessonContent.resources.map((resource) => (
+                        <div key={`${resource.title}-${resource.type}`} className='border px-3 py-3'>
+                          <div className='flex items-center justify-between gap-3'>
+                            <p className='text-sm font-medium'>{resource.title}</p>
+                            <Badge variant='secondary'>{getResourceLabel(resource.type)}</Badge>
+                          </div>
+                          <p className='mt-2 text-sm leading-6 text-muted-foreground'>{resource.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                    </>
+                  )
+                ) : (
+                  <div className='rounded-none border border-dashed px-4 py-8 text-sm text-muted-foreground'>
+                    This course does not have roadmap nodes yet. Open the dashboard later after the roadmap is generated.
+                  </div>
+                )}
               </div>
-            )}
+            </ScrollArea>
           </CardContent>
         </Card>
 
-        <Card className='xl:max-h-[calc(100vh-11rem)] xl:overflow-y-auto'>
+        <Card className='flex min-h-0 flex-col xl:h-full'>
           <CardHeader>
-            <CardTitle>Learning tutor</CardTitle>
+            <CardTitle>Coach panel</CardTitle>
             <CardDescription>
-              {selectedNode ? 'Ask for explanations, examples, or a smaller next step.' : 'The tutor becomes available once a roadmap step is selected.'}
+              Switch between tutor help and Socratic validation. Passing validation is what finishes a step.
             </CardDescription>
           </CardHeader>
-          <CardContent className='space-y-4'>
-            <div className='space-y-3'>
-              {visibleMessages.map((message, index) => (
-                <div
-                  key={`${message.role}-${index}`}
-                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`max-w-[90%] whitespace-pre-wrap border px-3 py-2 text-sm leading-6 ${message.role === 'user' ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-muted/40 text-foreground'}`}
-                  >
-                    {message.content}
-                  </div>
-                </div>
-              ))}
+          <CardContent className='min-h-0 flex-1 overflow-hidden p-0'>
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'tutor' | 'validation')} className='flex h-full min-h-0 flex-col'>
+              <TabsList className='mx-6 mt-6 w-[calc(100%-3rem)]'>
+                <TabsTrigger value='tutor'>Tutor</TabsTrigger>
+                <TabsTrigger value='validation'>Validation</TabsTrigger>
+              </TabsList>
 
-              {tutorChat.isPending && selectedNode ? (
-                <div className='flex justify-start'>
-                  <div className='max-w-[90%] border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground'>
-                    Thinking through {selectedNode.title.toLowerCase()}...
-                  </div>
-                </div>
-              ) : null}
-            </div>
+              <TabsContent value='tutor' className='flex min-h-0 flex-1 flex-col pt-4'>
+                <ScrollArea className='min-h-0 flex-1'>
+                  <div className='space-y-3 px-6 pb-2 pr-8'>
+                    {tutorSessionQuery.isPending && selectedNode ? (
+                      <div className='space-y-2'>
+                        <Skeleton className='h-16 w-full' />
+                        <Skeleton className='h-16 w-full' />
+                      </div>
+                    ) : tutorMessages.length > 0 ? (
+                      tutorMessages.map((message, index) => (
+                        <div key={`${message.role}-${index}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-[90%] whitespace-pre-wrap border px-3 py-2 text-sm leading-6 ${message.role === 'user' ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-muted/40 text-foreground'}`}>
+                            {message.content}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className='rounded-none border border-dashed px-3 py-4 text-sm text-muted-foreground'>
+                        {selectedNode ? `No tutor thread yet. Ask a question about ${selectedNode.title}.` : 'Select a node to start the tutor thread.'}
+                      </div>
+                    )}
 
-            <form onSubmit={handleSendMessage} className='space-y-3 border-t pt-4'>
-              <label htmlFor='tutor-message' className='text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground'>
-                Ask about this step
-              </label>
-              <textarea
-                id='tutor-message'
-                value={draftMessage}
-                onChange={(event) => setDraftMessage(event.target.value)}
-                placeholder={selectedNode ? `Ask about ${selectedNode.title}...` : 'Select a roadmap node first'}
-                disabled={!selectedNode || tutorChat.isPending}
-                className='min-h-28 w-full resize-y rounded-none border bg-background px-3 py-2 text-sm outline-none transition-colors focus:border-ring disabled:cursor-not-allowed disabled:opacity-50'
-              />
-              <div className='flex items-center justify-between gap-3 text-xs text-muted-foreground'>
-                <div className='flex items-center gap-2'>
-                  <Clock3Icon className='size-4' />
-                  <span>{selectedNode ? `${selectedNode.estimatedTime} minute study block` : 'No active node selected'}</span>
-                </div>
-                <Button type='submit' disabled={!selectedNode || !draftMessage.trim() || tutorChat.isPending}>
-                  <SendIcon className='size-4' />
-                  Send
-                </Button>
-              </div>
-            </form>
+                    {tutorChat.isPending && selectedNode ? (
+                      <div className='flex justify-start'>
+                        <div className='max-w-[90%] border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground'>
+                          Thinking through {selectedNode.title.toLowerCase()}...
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </ScrollArea>
+
+                <form onSubmit={handleSendTutorMessage} className='mt-4 space-y-3 border-t px-6 pb-6 pt-4'>
+                  <label htmlFor='tutor-message' className='text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground'>
+                    Ask the tutor
+                  </label>
+                  <textarea
+                    id='tutor-message'
+                    value={draftTutorMessage}
+                    onChange={(event) => setDraftTutorMessage(event.target.value)}
+                    placeholder={selectedNode ? `Ask about ${selectedNode.title}...` : 'Select a roadmap node first'}
+                    disabled={!selectedNode || tutorChat.isPending}
+                    className='min-h-28 w-full resize-y rounded-none border bg-background px-3 py-2 text-sm outline-none transition-colors focus:border-ring disabled:cursor-not-allowed disabled:opacity-50'
+                  />
+                  <div className='flex items-center justify-between gap-3 text-xs text-muted-foreground'>
+                    <div className='flex items-center gap-2'>
+                      <Clock3Icon className='size-4' />
+                      <span>{selectedNode ? `${selectedNode.estimatedTime} minute study block` : 'No active node selected'}</span>
+                    </div>
+                    <Button type='submit' disabled={!selectedNode || !draftTutorMessage.trim() || tutorChat.isPending}>
+                      <SendIcon className='size-4' />
+                      Send
+                    </Button>
+                  </div>
+                </form>
+              </TabsContent>
+
+              <TabsContent value='validation' className='flex min-h-0 flex-1 flex-col pt-4'>
+                <ScrollArea className='min-h-0 flex-1'>
+                  <div className='space-y-4 px-6 pb-2 pr-8'>
+                    <div className='rounded-none border px-3 py-3 text-sm text-muted-foreground'>
+                      {selectedNode ? getValidationPrompt(selectedNode.title) : 'Select a node first to start Socratic validation.'}
+                    </div>
+
+                    {socraticSessionQuery.data ? (
+                      <div className='grid grid-cols-3 gap-2 text-xs'>
+                        <div className='border px-3 py-2'>
+                          <p className='text-muted-foreground'>Competency</p>
+                          <p className='mt-1 font-medium text-foreground'>{Math.round(socraticSessionQuery.data.competencyScore ?? 0)}</p>
+                        </div>
+                        <div className='border px-3 py-2'>
+                          <p className='text-muted-foreground'>Stumbles</p>
+                          <p className='mt-1 font-medium text-foreground'>{socraticSessionQuery.data.stumbleCount}</p>
+                        </div>
+                        <div className='border px-3 py-2'>
+                          <p className='text-muted-foreground'>Sentiment</p>
+                          <p className='mt-1 font-medium text-foreground'>{socraticSessionQuery.data.sentimentScore.toFixed(2)}</p>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className='space-y-3'>
+                      {socraticSessionQuery.isPending && selectedNode ? (
+                        <div className='space-y-2'>
+                          <Skeleton className='h-16 w-full' />
+                          <Skeleton className='h-16 w-full' />
+                        </div>
+                      ) : validationMessages.length > 0 ? (
+                        validationMessages.map((message, index) => (
+                          <div key={`${message.role}-${index}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[90%] whitespace-pre-wrap border px-3 py-2 text-sm leading-6 ${message.role === 'user' ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-muted/40 text-foreground'}`}>
+                              {message.content}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className='rounded-none border border-dashed px-3 py-4 text-sm text-muted-foreground'>
+                          Validation history will appear here after your first response.
+                        </div>
+                      )}
+
+                      {validationChat.isPending && selectedNode ? (
+                        <div className='flex justify-start'>
+                          <div className='max-w-[90%] border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground'>
+                            Evaluating your understanding of {selectedNode.title.toLowerCase()}...
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </ScrollArea>
+
+                <form onSubmit={handleSendValidationMessage} className='mt-4 space-y-3 border-t px-6 pb-6 pt-4'>
+                  <label htmlFor='validation-message' className='text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground'>
+                    Respond for validation
+                  </label>
+                  <textarea
+                    id='validation-message'
+                    value={draftValidationMessage}
+                    onChange={(event) => setDraftValidationMessage(event.target.value)}
+                    placeholder={selectedNode ? `Explain ${selectedNode.title} in your own words...` : 'Select a roadmap node first'}
+                    disabled={!selectedNode || validationChat.isPending || selectedNode?.isCompleted}
+                    className='min-h-28 w-full resize-y rounded-none border bg-background px-3 py-2 text-sm outline-none transition-colors focus:border-ring disabled:cursor-not-allowed disabled:opacity-50'
+                  />
+                  <div className='flex items-center justify-between gap-3 text-xs text-muted-foreground'>
+                    <span>
+                      {selectedNode?.isCompleted
+                        ? 'This step is already completed. Reopen it to validate again.'
+                        : 'A score of 80 or above finishes the selected step.'}
+                    </span>
+                    <Button type='submit' disabled={!selectedNode || !draftValidationMessage.trim() || validationChat.isPending || selectedNode?.isCompleted}>
+                      <CircleCheckBigIcon className='size-4' />
+                      Validate
+                    </Button>
+                  </div>
+                </form>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       </div>

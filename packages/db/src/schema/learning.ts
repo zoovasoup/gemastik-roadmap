@@ -7,8 +7,21 @@ import {
 	boolean,
 	index,
 	jsonb,
+	uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
+
+type LessonContent = {
+	summary: string;
+	concepts: string[];
+	steps: string[];
+	exercises: string[];
+	resources: {
+		title: string;
+		description: string;
+		type: "reading" | "video" | "hands-on" | "socratic";
+	}[];
+};
 
 export const learningRoadmaps = pgTable(
 	"learning_roadmaps",
@@ -64,10 +77,34 @@ export const roadmapNodes = pgTable(
 		estimatedTime: integer("estimated_time").notNull(),
 		successCriteria: jsonb("success_criteria").$type<string[]>().notNull(),
 		difficultyLevel: integer("difficulty_level").notNull(),
+		lessonContent: jsonb("lesson_content").$type<LessonContent>(),
 		isCompleted: boolean("is_completed").default(false).notNull(),
+		completedAt: timestamp("completed_at"),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},
 	(table) => [index("node_roadmapId_idx").on(table.roadmapId)],
+);
+
+export const tutorSessions = pgTable(
+	"tutor_sessions",
+	{
+		id: text("id").primaryKey(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		nodeId: text("node_id")
+			.notNull()
+			.references(() => roadmapNodes.id, { onDelete: "cascade" }),
+		chatHistory: jsonb("chat_history")
+			.$type<{ role: "user" | "assistant"; content: string }[]>()
+			.notNull(),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+		updatedAt: timestamp("updated_at")
+			.defaultNow()
+			.$onUpdate(() => /* @__PURE__ */ new Date())
+			.notNull(),
+	},
+	(table) => [uniqueIndex("tutor_session_user_node_idx").on(table.userId, table.nodeId)],
 );
 
 export const learningRoadmapsRelations = relations(

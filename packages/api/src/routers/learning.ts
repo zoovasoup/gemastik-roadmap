@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 
-import { learningRoadmaps, roadmapNodes } from "@gemastik/db/schema/learning";
+import { learningRoadmaps, roadmapNodes, tutorSessions } from "@gemastik/db/schema/learning";
 import { socraticSessions } from "@gemastik/db/schema/validation";
 import { nanoid } from "nanoid";
 
@@ -27,14 +27,24 @@ const generatedNodeSchema = z.object({
   success_criteria: z.array(z.string().trim().min(1)).min(1),
 });
 
-const tutorMessageSchema = z.object({
-	role: z.enum(["user", "assistant"]),
-	content: z.string().trim().min(1).max(3000),
+const lessonContentResourceSchema = z.object({
+	title: z.string().trim().min(1),
+	description: z.string().trim().min(1),
+	type: z.enum(["reading", "video", "hands-on", "socratic"]),
+});
+
+const lessonContentSchema = z.object({
+	summary: z.string().trim().min(1),
+	concepts: z.array(z.string().trim().min(1)).min(2),
+	steps: z.array(z.string().trim().min(1)).min(2),
+	exercises: z.array(z.string().trim().min(1)).min(1),
+	resources: z.array(lessonContentResourceSchema).min(1),
 });
 
 type OnboardingAnswers = z.infer<typeof onboardingAnswersSchema>;
 type GeneratedNode = z.infer<typeof generatedNodeSchema>;
 type RoadmapGenerationStatus = "generated" | "draft";
+type LessonContent = z.infer<typeof lessonContentSchema>;
 
 function buildGoalDescription(input: OnboardingAnswers) {
   return [
@@ -75,6 +85,35 @@ function formatNodesForInsert(nodes: GeneratedNode[], userId: string, roadmapId:
 function buildTutorInstruction({
 	goalDescription,
 	node,
+	lessonContent,
+}: {
+	goalDescription: string;
+	node: {
+		title: string;
+		contentType: string;
+		difficultyLevel: number;
+		estimatedTime: number;
+		successCriteria: string[];
+	};
+	lessonContent?: LessonContent | null;
+}) {
+	return [
+		"You are a patient learning tutor inside a personalized roadmap app.",
+		"The overall learning goal is: " + goalDescription,
+		"The active roadmap node is: " + node.title,
+		"Node type: " + node.contentType + ". Difficulty: " + node.difficultyLevel + "/10. Estimated time: " + node.estimatedTime + " minutes.",
+		"Success criteria: " + node.successCriteria.join("; ") + ".",
+		lessonContent ? "Lesson summary: " + lessonContent.summary : "",
+		lessonContent ? "Key concepts: " + lessonContent.concepts.join("; ") + "." : "",
+		"Help the learner understand the topic, unblock confusion, and propose next steps.",
+		"Do not grade them, do not mention competency scores, and do not imply progress was automatically updated.",
+		"Keep responses practical, conversational, and grounded in the node context.",
+	].filter(Boolean).join(" ");
+}
+
+function buildLessonContentPrompt({
+	goalDescription,
+	node,
 }: {
 	goalDescription: string;
 	node: {
@@ -86,15 +125,106 @@ function buildTutorInstruction({
 	};
 }) {
 	return [
-		"You are a patient learning tutor inside a personalized roadmap app.",
-		"The overall learning goal is: " + goalDescription,
-		"The active roadmap node is: " + node.title,
-		"Node type: " + node.contentType + ". Difficulty: " + node.difficultyLevel + "/10. Estimated time: " + node.estimatedTime + " minutes.",
-		"Success criteria: " + node.successCriteria.join("; ") + ".",
-		"Help the learner understand the topic, unblock confusion, and propose next steps.",
-		"Do not grade them, do not mention competency scores, and do not imply progress was automatically updated.",
-		"Keep responses practical, conversational, and grounded in the node context.",
+		`Goal: ${goalDescription}`,
+		`Node title: ${node.title}`,
+		`Content type: ${node.contentType}`,
+		`Difficulty: ${node.difficultyLevel}/10`,
+		`Estimated time: ${node.estimatedTime} minutes`,
+		`Success criteria: ${node.successCriteria.join("; ")}`,
+	].join("\n");
+}
+
+async function generateLessonContent({
+	goalDescription,
+	node,
+}: {
+	goalDescription: string;
+	node: {
+		title: string;
+		contentType: string;
+		difficultyLevel: number;
+		estimatedTime: number;
+		successCriteria: string[];
+	};
+}) {
+	const systemInstruction = [
+		"You are a senior learning designer creating a compact but actionable lesson for one roadmap node.",
+		"Respond ONLY with valid JSON.",
+		"Schema:",
+		'{"summary":"string","concepts":["string"],"steps":["string"],"exercises":["string"],"resources":[{"title":"string","description":"string","type":"reading|video|hands-on|socratic"}]}',
+		"Keep the lesson grounded in the node context and success criteria.",
+		"Do not include markdown fences.",
 	].join(" ");
+
+	const lesson = await aiService.generateStructuredOutput(
+		buildLessonContentPrompt({ goalDescription, node }),
+		systemInstruction,
+	);
+
+	return lessonContentSchema.parse(lesson);
+}
+
+async function ensureLessonContent({
+	ctx,
+	roadmap,
+	node,
+}: {
+	ctx: { db: typeof import("@gemastik/db").db; user: { id: string } };
+	roadmap: { goalDescription: string };
+	node: {
+		id: string;
+		title: string;
+		contentType: string;
+		difficultyLevel: number;
+		estimatedTime: number;
+		successCriteria: string[];
+		lessonContent: LessonContent | null;
+	};
+}) {
+	if (node.lessonContent) {
+		return node.lessonContent;
+	}
+
+	const lessonContent = await generateLessonContent({
+		goalDescription: roadmap.goalDescription,
+		node,
+	});
+
+	await ctx.db
+		.update(roadmapNodes)
+		.set({ lessonContent })
+		.where(eq(roadmapNodes.id, node.id));
+
+	return lessonContent;
+}
+
+async function syncRoadmapCompletion({
+	ctx,
+	roadmapId,
+}: {
+	ctx: { db: typeof import("@gemastik/db").db; user: { id: string } };
+	roadmapId: string;
+}) {
+	const nodes = await ctx.db.query.roadmapNodes.findMany({
+		where: and(
+			eq(roadmapNodes.roadmapId, roadmapId),
+			eq(roadmapNodes.userId, ctx.user.id),
+		),
+	});
+
+	const isCompleted = nodes.length > 0 && nodes.every((node) => node.isCompleted);
+
+	await ctx.db
+		.update(learningRoadmaps)
+		.set({ currentStatus: isCompleted ? "completed" : "active" })
+		.where(
+			and(
+				eq(learningRoadmaps.id, roadmapId),
+				eq(learningRoadmaps.userId, ctx.user.id),
+			),
+		);
+
+	return isCompleted;
 }
 
 async function generateNodes(goalDescription: string) {
@@ -267,12 +397,63 @@ export const learningRouter = createTRPCRouter({
 		});
 	}),
 
+	getNodeContent: protectedProcedure
+		.input(z.object({ roadmapId: z.string().min(1), nodeId: z.string().min(1) }))
+		.query(async ({ ctx, input }) => {
+			const roadmap = await ctx.db.query.learningRoadmaps.findFirst({
+				where: and(
+					eq(learningRoadmaps.id, input.roadmapId),
+					eq(learningRoadmaps.userId, ctx.user.id),
+				),
+			});
+
+			if (!roadmap) {
+				throw new Error("Roadmap tidak ditemukan.");
+			}
+
+			const node = await ctx.db.query.roadmapNodes.findFirst({
+				where: and(
+					eq(roadmapNodes.id, input.nodeId),
+					eq(roadmapNodes.roadmapId, input.roadmapId),
+					eq(roadmapNodes.userId, ctx.user.id),
+				),
+			});
+
+			if (!node) {
+				throw new Error("Node tidak ditemukan.");
+			}
+
+			const lessonContent = await ensureLessonContent({
+				ctx,
+				roadmap,
+				node: {
+					...node,
+					lessonContent: node.lessonContent as LessonContent | null,
+				},
+			});
+
+			return { nodeId: node.id, lessonContent };
+		}),
+
+	getTutorSession: protectedProcedure
+		.input(z.object({ nodeId: z.string().min(1) }))
+		.query(async ({ ctx, input }) => {
+			const session = await ctx.db.query.tutorSessions.findFirst({
+				where: and(
+					eq(tutorSessions.nodeId, input.nodeId),
+					eq(tutorSessions.userId, ctx.user.id),
+				),
+			});
+
+			return session?.chatHistory ?? [];
+		}),
+
 	askTutor: protectedProcedure
 		.input(
 			z.object({
 				roadmapId: z.string().min(1),
 				nodeId: z.string().min(1),
-				messages: z.array(tutorMessageSchema).min(1).max(20),
+				message: z.string().trim().min(1).max(3000),
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
@@ -299,7 +480,28 @@ export const learningRouter = createTRPCRouter({
 				throw new Error("Node tidak ditemukan.");
 			}
 
-			const prompt = input.messages
+			const lessonContent = await ensureLessonContent({
+				ctx,
+				roadmap,
+				node: {
+					...node,
+					lessonContent: node.lessonContent as LessonContent | null,
+				},
+			});
+
+			const session = await ctx.db.query.tutorSessions.findFirst({
+				where: and(
+					eq(tutorSessions.nodeId, input.nodeId),
+					eq(tutorSessions.userId, ctx.user.id),
+				),
+			});
+
+			const updatedHistory = [
+				...(session?.chatHistory ?? []),
+				{ role: "user" as const, content: input.message },
+			];
+
+			const prompt = updatedHistory
 				.map((message) => `${message.role === "user" ? "Learner" : "Tutor"}: ` + message.content)
 				.join("\n");
 
@@ -308,10 +510,79 @@ export const learningRouter = createTRPCRouter({
 				buildTutorInstruction({
 					goalDescription: roadmap.goalDescription,
 					node,
+					lessonContent,
 				}),
 			);
 
-			return { answer };
+			const chatHistory = [
+				...updatedHistory,
+				{ role: "assistant" as const, content: answer },
+			];
+
+			await ctx.db
+				.insert(tutorSessions)
+				.values({
+					id: session?.id ?? nanoid(),
+					userId: ctx.user.id,
+					nodeId: input.nodeId,
+					chatHistory,
+				})
+				.onConflictDoUpdate({
+					target: tutorSessions.id,
+					set: { chatHistory },
+				});
+
+			return { answer, chatHistory };
+		}),
+
+	finishNode: protectedProcedure
+		.input(z.object({ roadmapId: z.string().min(1), nodeId: z.string().min(1) }))
+		.mutation(async ({ ctx, input }) => {
+			const node = await ctx.db.query.roadmapNodes.findFirst({
+				where: and(
+					eq(roadmapNodes.id, input.nodeId),
+					eq(roadmapNodes.roadmapId, input.roadmapId),
+					eq(roadmapNodes.userId, ctx.user.id),
+				),
+			});
+
+			if (!node) {
+				throw new Error("Node tidak ditemukan.");
+			}
+
+			await ctx.db
+				.update(roadmapNodes)
+				.set({ isCompleted: true, completedAt: new Date() })
+				.where(eq(roadmapNodes.id, input.nodeId));
+
+			const roadmapCompleted = await syncRoadmapCompletion({ ctx, roadmapId: input.roadmapId });
+
+			return { success: true, roadmapCompleted };
+		}),
+
+	reopenNode: protectedProcedure
+		.input(z.object({ roadmapId: z.string().min(1), nodeId: z.string().min(1) }))
+		.mutation(async ({ ctx, input }) => {
+			const node = await ctx.db.query.roadmapNodes.findFirst({
+				where: and(
+					eq(roadmapNodes.id, input.nodeId),
+					eq(roadmapNodes.roadmapId, input.roadmapId),
+					eq(roadmapNodes.userId, ctx.user.id),
+				),
+			});
+
+			if (!node) {
+				throw new Error("Node tidak ditemukan.");
+			}
+
+			await ctx.db
+				.update(roadmapNodes)
+				.set({ isCompleted: false, completedAt: null })
+				.where(eq(roadmapNodes.id, input.nodeId));
+
+			await syncRoadmapCompletion({ ctx, roadmapId: input.roadmapId });
+
+			return { success: true };
 		}),
 
 	getDashboard: protectedProcedure.query(async ({ ctx }) => {

@@ -16,7 +16,9 @@ function makeQueryClient() {
         toast.error(`Error: ${error.message}`, {
           action: {
             label: "retry",
-            onClick: query.invalidate,
+            onClick: () => {
+              void query.invalidate();
+            },
           },
         });
       },

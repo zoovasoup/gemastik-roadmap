@@ -15,6 +15,20 @@
       "when": 1776263293954,
       "tag": "0001_pink_crusher_hogan",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776525425419,
+      "tag": "0002_concerned_goliath",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776532738972,
+      "tag": "0003_premium_doorman",
+      "breakpoints": true
     }
   ]
 }

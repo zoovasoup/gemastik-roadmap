@@ -33,7 +33,7 @@ export function SectionCards() {
 
   if (roadmapQuery.isPending) {
     return (
-      <div className='grid grid-cols-1 gap-4 px-4 lg:px-6 xl:grid-cols-2'>
+      <div className='grid grid-cols-1 gap-5 px-4 lg:px-6 xl:grid-cols-2 2xl:grid-cols-3'>
         <Card className='rounded-2xl border-dashed'>
           <CardHeader>
             <CardTitle>Loading courses...</CardTitle>
@@ -45,7 +45,7 @@ export function SectionCards() {
 
   if (roadmapQuery.isError) {
     return (
-      <div className='grid grid-cols-1 gap-4 px-4 lg:px-6 xl:grid-cols-2'>
+      <div className='grid grid-cols-1 gap-5 px-4 lg:px-6 xl:grid-cols-2 2xl:grid-cols-3'>
         <Card className='rounded-2xl border-destructive/40'>
           <CardHeader>
             <CardTitle>Unable to load courses</CardTitle>
@@ -60,7 +60,7 @@ export function SectionCards() {
 
   if (roadmapQuery.data.length === 0) {
     return (
-      <div className='grid grid-cols-1 gap-4 px-4 lg:px-6'>
+      <div className='grid grid-cols-1 gap-5 px-4 lg:px-6'>
         <Card className='rounded-2xl border-dashed'>
           <CardHeader>
             <CardTitle>Create your first course</CardTitle>
@@ -74,7 +74,7 @@ export function SectionCards() {
   }
 
   return (
-    <div className='grid grid-cols-1 gap-4 px-4 lg:px-6 xl:grid-cols-2 2xl:grid-cols-4'>
+    <div className='grid grid-cols-1 gap-5 px-4 lg:px-6 xl:grid-cols-2 2xl:grid-cols-3'>
       {roadmapQuery.data.map((roadmap) => {
         const completedNodes = roadmap.nodes.filter((node) => node.isCompleted).length
         const progress = roadmap.nodes.length > 0 ? Math.round((completedNodes / roadmap.nodes.length) * 100) : null
